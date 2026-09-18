@@ -229,7 +229,14 @@ async def test_hologres_age_graph_preserves_edges_across_hydration_chunks(
         workspace=workspace,
         global_config={"max_graph_nodes": 1000},
         embedding_func=None,
-        config=HologresConfig.from_env(dict(os.environ)),
+        config=HologresConfig.from_env(
+            {
+                **os.environ,
+                "HOLOGRES_POOL_MIN_SIZE": "1",
+                "HOLOGRES_POOL_MAX_SIZE": "2",
+                "HOLOGRES_POOL_CLOSE_TIMEOUT": "60",
+            }
+        ),
     )
     neighbours = [f"n{index:03d}" for index in range(_ID_CHUNK_SIZE + 1)]
     expected_edges = {("hub", neighbour) for neighbour in neighbours}

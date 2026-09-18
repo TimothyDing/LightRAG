@@ -7,6 +7,19 @@ from pathlib import Path
 
 _PACKAGE_DIR = Path(__file__).parents[3] / "lightrag" / "kg" / "hologres"
 _LIVE_GLOB = "test_hologres_live*.py"
+_LIVE_MODULE_COVERAGE = {
+    "__init__.py": {"test_hologres_live_end_to_end.py"},
+    "capabilities.py": {"test_hologres_live_capabilities.py"},
+    "client.py": {"test_hologres_live_client.py"},
+    "config.py": {"test_hologres_live_config.py"},
+    "doc_status.py": {"test_hologres_live_doc_status.py"},
+    "graph.py": {"test_hologres_live_graph.py"},
+    "graph_age.py": {"test_hologres_live_graph.py"},
+    "kv.py": {"test_hologres_live_kv.py"},
+    "schema.py": {"test_hologres_live_schema.py"},
+    "vector.py": {"test_hologres_live_vector.py"},
+    "workspace.py": {"test_hologres_live_workspace.py"},
+}
 
 
 def _constant_vector_query_pattern():
@@ -32,7 +45,8 @@ def test_hologres_sql_never_uses_a_constant_only_vector_operand():
 
 def test_live_modules_import_only_hologres_backends_and_carry_live_markers():
     live_paths = sorted(Path(__file__).parent.glob(_LIVE_GLOB))
-    assert len(live_paths) == 7
+    expected_names = set.union(*_LIVE_MODULE_COVERAGE.values())
+    assert {path.name for path in live_paths} == expected_names
 
     for path in live_paths:
         tree = ast.parse(path.read_text())

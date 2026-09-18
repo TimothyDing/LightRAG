@@ -276,6 +276,30 @@ async def test_orientation_probe_passes_when_similarity_outranks_distance():
     ]
 
 
+@pytest.mark.asyncio
+async def test_orientation_probe_vectors_follow_the_table_dimension():
+    client = OrientationClient(result=2.0)
+    dimension = 8
+    expected = [1.0] + [0.0] * (dimension - 1)
+    expected_opposite = [-1.0] + [0.0] * (dimension - 1)
+
+    await prove_similarity_orientation(
+        client,
+        table='"lightrag_test_probe"."lightrag_hologres_vectors"',
+        dimension=dimension,
+    )
+
+    insert = next(
+        write
+        for write in client.writes
+        if write[0] == "probe.similarity.insert"
+    )
+    _descriptor, _sql, insert_values, _replay_safe = insert
+    assert insert_values[3] == expected
+    _descriptor, _sql, query_values = client.calls[0]
+    assert query_values[:2] == (expected, expected_opposite)
+
+
 @pytest.mark.parametrize(
     "result",
     [0.0, -1.5, "0.5", None, True],

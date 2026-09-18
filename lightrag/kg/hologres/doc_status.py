@@ -670,8 +670,10 @@ class HologresDocStatusStorage(DocStatusStorage):
             # Once set, content_hash is write-once-after-set. State transitions
             # reuse a loaded payload that may predate the separate targeted
             # hash patch, so an omitted/empty value must not clear it.
-            "content_hash = COALESCE("
-            "NULLIF(EXCLUDED.content_hash, ''), current.content_hash), "
+            "content_hash = CASE "
+            "WHEN EXCLUDED.content_hash IS NULL "
+            "OR EXCLUDED.content_hash = '' THEN current.content_hash "
+            "ELSE EXCLUDED.content_hash END, "
             "content_summary = EXCLUDED.content_summary, "
             "content_length = EXCLUDED.content_length, "
             "chunks_count = EXCLUDED.chunks_count, chunks_list = EXCLUDED.chunks_list, "

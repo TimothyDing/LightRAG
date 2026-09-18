@@ -233,9 +233,13 @@ class OrientationClient:
         self.result = result
         self.error = error
         self.calls = []
+        self.writes = []
+
+    async def execute_one(self, sql, *values, descriptor, replay_safe=False):
+        self.writes.append((descriptor, sql, values, replay_safe))
 
     async def fetch_value(self, sql, *values, descriptor):
-        self.calls.append((descriptor, values))
+        self.calls.append((descriptor, sql, values))
         if self.error is not None:
             raise self.error
         return self.result
@@ -245,17 +249,31 @@ class OrientationClient:
 async def test_orientation_probe_passes_when_similarity_outranks_distance():
     client = OrientationClient(result=2.0)
 
-    await prove_similarity_orientation(client)
+    await prove_similarity_orientation(
+        client,
+        table='"lightrag_test_probe"."lightrag_hologres_vectors"',
+        dimension=3,
+    )
 
-    (descriptor, values) = client.calls[0]
+    descriptor, probe_sql, values = client.calls[0]
     assert descriptor == "probe.similarity.orientation"
     # Same vector as the query scores higher than the exact opposite, which
     # only holds when the function returns similarity rather than distance.
     assert values == (
         [1.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
         [-1.0, 0.0, 0.0],
+        "__lightrag_orientation_probe__",
+        "__lightrag_orientation_probe__",
+        "__lightrag_orientation_probe__",
     )
+    assert "approx_cosine_distance(embedding, $1::float4[])" in probe_sql
+    assert "approx_cosine_distance(embedding, $2::float4[])" in probe_sql
+    assert 'FROM "lightrag_test_probe"."lightrag_hologres_vectors"' in probe_sql
+    assert [write[0] for write in client.writes] == [
+        "probe.similarity.cleanup",
+        "probe.similarity.insert",
+        "probe.similarity.cleanup",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -269,7 +287,12 @@ async def test_orientation_probe_fails_closed_on_distance_or_unknown_semantics(
     client = OrientationClient(result=result)
 
     with pytest.raises(HologresCapabilityError, match="similarity"):
-        await prove_similarity_orientation(client)
+        await prove_similarity_orientation(
+            client,
+            table='"lightrag_test_probe"."lightrag_hologres_vectors"',
+            dimension=3,
+        )
+    assert [write[0] for write in client.writes][-1] == "probe.similarity.cleanup"
 
 
 @pytest.mark.asyncio
@@ -277,7 +300,12 @@ async def test_orientation_probe_fails_closed_when_the_query_itself_fails():
     client = OrientationClient(error=RuntimeError("password=probe-secret"))
 
     with pytest.raises(HologresCapabilityError, match="orientation"):
-        await prove_similarity_orientation(client)
+        await prove_similarity_orientation(
+            client,
+            table='"lightrag_test_probe"."lightrag_hologres_vectors"',
+            dimension=3,
+        )
+    assert [write[0] for write in client.writes][-1] == "probe.similarity.cleanup"
 
 
 

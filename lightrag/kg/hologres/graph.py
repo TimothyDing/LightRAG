@@ -12,9 +12,8 @@ Hologres-imposed:
   deletes, never via CASCADE;
 * no multi-argument ``unnest`` — pair batches use ``generate_series`` with
   array subscripts;
-* explicit ``COLLATE "C"`` on identifier tie-breakers — the server default
-  is not assumed, so SQL ordering remains aligned with the Python
-  ``min``/``max`` edge canonicalization on every collation.
+* default server collation for identifier tie-breakers — Hologres rejects
+  non-default collation expressions, unlike the PostgreSQL reference.
 """
 
 from __future__ import annotations
@@ -942,9 +941,9 @@ class HologresGraphStorage(BaseGraphStorage):
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise HologresGraphError("Hologres graph limit is invalid")
         client, nodes, edges = self._ready()
-        # Rank ALL nodes including isolated (degree 0) ones, ties broken by
-        # id in code-point order. COLLATE is explicit because the server
-        # default collation is outside this backend's control.
+        # Rank ALL nodes including isolated (degree 0) ones; Hologres applies
+        # its default collation to identifier ties because it rejects
+        # non-default collation expressions.
         try:
             rows = await client.fetch_all(
                 "SELECT n.id AS id, COALESCE(d.degree, 0) AS degree "
@@ -959,7 +958,7 @@ class HologresGraphStorage(BaseGraphStorage):
                 ") sub GROUP BY id"
                 ") d ON d.id = n.id "
                 "WHERE n.workspace = $1 AND n.namespace = $2 "
-                "ORDER BY degree DESC, n.id COLLATE \"C\" ASC "
+                "ORDER BY degree DESC, n.id ASC "
                 "LIMIT $3::int",
                 self.workspace,
                 self.namespace,
@@ -1022,7 +1021,7 @@ class HologresGraphStorage(BaseGraphStorage):
                       AND namespace = $2
                       AND LOWER(id) LIKE $7 ESCAPE E'\\\\'
                 ) scored
-                ORDER BY score DESC, id COLLATE "C" ASC
+                ORDER BY score DESC, id ASC
                 LIMIT $8::int
                 """,
                 self.workspace,
@@ -1179,7 +1178,7 @@ class HologresGraphStorage(BaseGraphStorage):
             f"JOIN {nodes} n "
             "ON n.workspace = $1 AND n.namespace = $2 AND n.id = c.nid "
             "LEFT JOIN candidate_degrees d ON d.id = c.nid "
-            "ORDER BY COALESCE(d.degree, 0) DESC, n.id COLLATE \"C\" ASC "
+            "ORDER BY COALESCE(d.degree, 0) DESC, n.id ASC "
             "LIMIT $5::int"
         )
         while frontier and depth < max_depth and len(collected) <= node_budget:
@@ -1246,7 +1245,7 @@ class HologresGraphStorage(BaseGraphStorage):
                     ") sub GROUP BY id"
                     ") d ON d.id = n.id "
                     "WHERE n.workspace = $1 AND n.namespace = $2 "
-                    "ORDER BY degree DESC, n.id COLLATE \"C\" ASC "
+                    "ORDER BY degree DESC, n.id ASC "
                     "LIMIT $3::int",
                     self.workspace,
                     self.namespace,

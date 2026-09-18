@@ -26,7 +26,7 @@ from lightrag.namespace import NameSpace
 from lightrag.utils import compute_mdhash_id
 
 
-async def _orientation_ok(_client):
+async def _orientation_ok(_client, **_kwargs):
     """No-op for the vector orientation probe; pinned in test_capabilities."""
 
 
@@ -244,6 +244,18 @@ def test_vector_descriptor_is_dimension_specific_and_carries_frozen_hgraph_index
     )
     assert "extra_columns" not in descriptor.sql
     assert len(descriptor.postcondition_args) == 4
+    assert json.loads(descriptor.postcondition_args[2]) == [
+        ["workspace", "text", True],
+        ["namespace", "text", True],
+        ["id", "text", True],
+        ["embedding", "_float4", True],
+        ["content", "text", True],
+        ["payload", "jsonb", True],
+        ["updated_at", "timestamptz", True],
+    ]
+    # create_time is added by the later additive descriptor, so the base
+    # postcondition must remain stable across both migration stages.
+    assert "FILTER (WHERE a.attname <> 'create_time')" in descriptor.postcondition_sql
     assert "contype = 'p'" in descriptor.postcondition_sql
     assert "contype = 'c'" not in descriptor.postcondition_sql
     assert "hologres.hg_table_properties" in descriptor.postcondition_sql

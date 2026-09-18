@@ -235,13 +235,19 @@ class HologresVectorStorage(BaseVectorStorage):
                         )
 
                 capabilities = await probe_production_capabilities(actual_client)
-                # The query SQL below assumes approx_cosine_distance returns
-                # similarity; a distance-semantics server would otherwise
-                # return the least similar rows with no visible error.
-                await prove_similarity_orientation(actual_client)
                 manager = HologresSchemaManager(actual_client, schema=config.schema)
                 await manager.initialize(
                     vector_schema_descriptors(config.schema, self._dimension)
+                )
+                # The probe reads a real sentinel row's embedding column;
+                # Hologres rejects the approximate function when both vector
+                # operands are constants, so schema setup must happen first.
+                await prove_similarity_orientation(
+                    actual_client,
+                    table=quote_qualified_identifier(
+                        config.schema, VECTOR_TABLE_NAME
+                    ),
+                    dimension=self._dimension,
                 )
                 capabilities = await prove_stream_copy_capability(
                     actual_client, capabilities

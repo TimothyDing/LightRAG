@@ -237,32 +237,90 @@ def _result(
     )
 
 
-async def prove_similarity_orientation(client: HologresClient) -> None:
-    """Prove ``approx_cosine_distance`` returns similarity, higher is closer.
+async def prove_similarity_orientation(
+    client: HologresClient, *, table: str, dimension: int
+) -> None:
+    """Prove ``approx_cosine_distance`` returns similarity on a real table.
 
     Vector queries order by the function's output descending and filter with
     ``cosine_better_than_threshold``; both invert if a server builds the
     function with distance semantics, and the failure mode is silent (queries
-    simply return the least similar rows). The HGraph probe pins the exact
-    score contract, but it only runs inside the isolated probe suite, so
-    vector storage re-proves the orientation cheaply at initialize time with
-    two constant vectors — one scalar query, no DDL and no special privileges
-    — and refuses to serve on a mismatch.
+    simply return the least similar rows). Hologres refuses to evaluate an
+    approximate vector function when every vector argument is a constant, so
+    this check writes one reserved sentinel row to the already-initialized
+    shared vector table and reads its ``embedding`` column. The sentinel uses
+    a namespace that is outside the public vector namespace allowlist.
     """
 
+    if (
+        isinstance(dimension, bool)
+        or not isinstance(dimension, int)
+        or dimension < 1
+    ):
+        raise HologresCapabilityError("Invalid Hologres vector probe dimension")
+    workspace = "__lightrag_orientation_probe__"
+    namespace = "__lightrag_orientation_probe__"
+    identifier = "__lightrag_orientation_probe__"
+    embedding = [1.0] + [0.0] * (dimension - 1)
+    opposite = [-1.0] + [0.0] * (dimension - 1)
+    delete_sql = (
+        f"DELETE FROM {table} "
+        "WHERE workspace = $1 AND namespace = $2 AND id = $3"
+    )
+    insert_sql = (
+        f"INSERT INTO {table} "
+        "(workspace, namespace, id, embedding, content, payload) "
+        "VALUES ($1, $2, $3, $4::float4[], $5, $6::jsonb)"
+    )
+    probe_sql = (
+        "SELECT approx_cosine_distance(embedding, $1::float4[]) "
+        "- approx_cosine_distance(embedding, $2::float4[]) "
+        f"FROM {table} "
+        "WHERE workspace = $3 AND namespace = $4 AND id = $5"
+    )
+
     try:
+        await client.execute_one(
+            delete_sql,
+            workspace,
+            namespace,
+            identifier,
+            descriptor="probe.similarity.cleanup",
+            replay_safe=True,
+        )
+        await client.execute_one(
+            insert_sql,
+            workspace,
+            namespace,
+            identifier,
+            embedding,
+            "Hologres vector orientation probe",
+            "{}",
+            descriptor="probe.similarity.insert",
+            replay_safe=True,
+        )
         delta = await client.fetch_value(
-            "SELECT approx_cosine_distance($1::float4[], $2::float4[]) "
-            "- approx_cosine_distance($1::float4[], $3::float4[])",
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
+            probe_sql,
+            embedding,
+            opposite,
+            workspace,
+            namespace,
+            identifier,
             descriptor="probe.similarity.orientation",
         )
     except Exception:
         raise HologresCapabilityError(
             "Hologres cosine similarity orientation probe failed"
         ) from None
+    finally:
+        await client.execute_one(
+            delete_sql,
+            workspace,
+            namespace,
+            identifier,
+            descriptor="probe.similarity.cleanup",
+            replay_safe=True,
+        )
     if (
         isinstance(delta, bool)
         or not isinstance(delta, (int, float))

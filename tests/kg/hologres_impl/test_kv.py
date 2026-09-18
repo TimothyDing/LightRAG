@@ -711,6 +711,7 @@ def test_kv_descriptor_pins_logical_hybrid_table_and_exact_catalog_postcondition
         "id text NOT NULL",
         "payload jsonb NOT NULL",
         "updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP",
+        "create_time timestamptz",
         "PRIMARY KEY (workspace, namespace, id)",
         "LOGICAL PARTITION BY LIST (workspace)",
         "orientation = 'row,column'",
@@ -745,6 +746,7 @@ def test_kv_descriptor_pins_logical_hybrid_table_and_exact_catalog_postcondition
         ["id", "text", True],
         ["payload", "jsonb", True],
         ["updated_at", "timestamptz", True],
+        ["create_time", "timestamptz", False],
     ]
     assert json.loads(descriptor.postcondition_args[3]) == [
         "workspace",
@@ -987,6 +989,7 @@ async def test_generic_upsert_sends_complete_objects_in_replay_safe_replacement_
     assert {k: json.loads(v) for k, v in sent.items()} == data
     assert "unnest($3::text[])" in call["sql"]
     assert "unnest($4::jsonb[])" in call["sql"]
+    assert "CURRENT_TIMESTAMP ON CONFLICT" in call["sql"]
     assert "payload = EXCLUDED.payload" in call["sql"]
     # create_time/update_time are storage-managed and stamped by the
     # statement itself: a stored numeric create_time survives an update, and

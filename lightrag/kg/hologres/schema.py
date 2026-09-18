@@ -490,6 +490,7 @@ def kv_schema_descriptors(schema: str) -> tuple[SchemaDescriptor, SchemaDescript
             ["id", "text", True],
             ["payload", "jsonb", True],
             ["updated_at", "timestamptz", True],
+            ["create_time", "timestamptz", False],
         ],
         separators=(",", ":"),
     )
@@ -541,6 +542,7 @@ def kv_schema_descriptors(schema: str) -> tuple[SchemaDescriptor, SchemaDescript
             "id text NOT NULL, "
             "payload jsonb NOT NULL, "
             "updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+            "create_time timestamptz, "
             "PRIMARY KEY (workspace, namespace, id)"
             ") LOGICAL PARTITION BY LIST (workspace) "
             "WITH (orientation = 'row,column', distribution_key = 'namespace,id')"
@@ -726,7 +728,9 @@ def vector_schema_descriptors(
         "WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'r') "
         "AND COALESCE(("
         "SELECT jsonb_agg(jsonb_build_array(a.attname, t.typname, a.attnotnull) "
-        "ORDER BY a.attnum) FROM pg_catalog.pg_class c "
+        "ORDER BY a.attnum) "
+        "FILTER (WHERE a.attname <> 'create_time') "
+        "FROM pg_catalog.pg_class c "
         "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
         "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid "
         "JOIN pg_catalog.pg_type t ON t.oid = a.atttypid "

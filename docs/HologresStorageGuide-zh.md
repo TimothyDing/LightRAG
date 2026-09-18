@@ -386,7 +386,7 @@ AGE 扩展缺失时默认启动失败，除非 `HOLOGRES_AGE_ALLOW_UNSUPPORTED=t
 
 ### Vector 启动拒绝余弦函数方向
 
-`approx_cosine_distance` 必须返回相似度（越大越相近）。Vector 存储在初始化时用常量向量查询验证方向，服务端若返回距离语义则拒绝提供服务，否则查询会悄悄返回最不相似的行。请记录报错并核实服务端 HGraph 构建。
+`approx_cosine_distance` 必须返回相似度（越大越相近）。Vector 存储在初始化时写入一条保留哨兵行，并读取共享向量表中该行的 `embedding` 列来验证方向；当所有向量参数都是常量时，Hologres 不会对近似向量函数求值。服务端若返回距离语义则拒绝提供服务，否则查询会悄悄返回最不相似的行。请记录报错并核实服务端 HGraph 构建。
 
 ### Schema 初始化失败
 

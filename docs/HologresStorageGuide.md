@@ -389,7 +389,7 @@ Missing AGE fails startup unless `HOLOGRES_AGE_ALLOW_UNSUPPORTED=true` explicitl
 
 ### Vector startup rejects the cosine function orientation
 
-`approx_cosine_distance` must return similarity (higher is closer). Vector storage proves this at initialize time with a constant-vector query and refuses to serve when a server returns distance semantics, because queries would otherwise silently rank the least similar rows first. Capture the error and verify the server's HGraph build.
+`approx_cosine_distance` must return similarity (higher is closer). Vector storage proves this at initialize time by reading a reserved sentinel row's `embedding` column from the shared vector table; Hologres does not evaluate approximate vector functions when every vector operand is a constant. Initialization refuses to serve when a server returns distance semantics, because queries would otherwise silently rank the least similar rows first. Capture the error and verify the server's HGraph build.
 
 ### Schema initialization fails
 

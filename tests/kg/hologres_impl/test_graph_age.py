@@ -424,14 +424,19 @@ async def test_upsert_edge_normalizes_direction_and_replaces_properties(
         for call in endpoints
     ] == [True, False]
     assert "MERGE (n:Entity {entity_id: 'zeta'})" in endpoints[1]["sql"]
-    # Edge creation and property replacement are one statement: an
-    # interruption must never expose an edge without its properties.
-    (upsert,) = calls_for(client, "age.edge.upsert")
+    # Hologres AGE allows one write clause per statement, so creation and
+    # property replacement are sequential; a retry repairs the residue.
+    upserts = calls_for(client, "age.edge.upsert")
+    assert len(upserts) == 2
     assert (
         "MATCH (a:Entity {entity_id: 'alpha'}), (b:Entity {entity_id: 'zeta'}) "
-        "MERGE (a)-[r:DIRECTED]->(b) "
+        "MERGE (a)-[:DIRECTED]->(b)"
+    ) in upserts[0]["sql"]
+    assert (
+        "MATCH (a:Entity {entity_id: 'alpha'})-[r:DIRECTED]->"
+        "(b:Entity {entity_id: 'zeta'}) "
         "SET r = {keywords: 'k', weight: 2.5}"
-    ) in upsert["sql"]
+    ) in upserts[1]["sql"]
 
 
 async def test_self_loop_edge_creates_the_endpoint_once(ready_storage):
@@ -849,8 +854,8 @@ async def test_age_edge_upsert_and_remove_batches_dedupe_canonical_pairs(
         ]
     )
     upserts = calls_for(client, "age.edge.upsert")
-    assert len(upserts) == 1
-    assert "{weight: 2}" in upserts[0]["sql"]
+    assert len(upserts) == 2
+    assert "{weight: 2}" in upserts[-1]["sql"]
 
     await storage.remove_edges([("zeta", "alpha"), ("alpha", "zeta")])
     deletes = calls_for(client, "age.edge.delete")

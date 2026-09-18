@@ -571,10 +571,10 @@ class HologresAGEGraphStorage(BaseGraphStorage):
         # Auto-create missing endpoints as stubs (MERGE keeps existing
         # properties); a crash here leaves a stub node without an edge, which
         # a retry repairs — the same residue the two-table backend accepts.
-        # The edge row itself is one statement: MERGE and its property
-        # REPLACE run inside a single cypher call, so an interruption can
-        # never expose an edge without its properties (a property-less edge
-        # would carry no evidence and violate the relation weight contract).
+        # Hologres AGE permits only one write clause per cypher call, so
+        # edge creation and property replacement are separate. A crash in
+        # between leaves a property-less edge as documented residue; retry
+        # or the next edge upsert repairs it.
         await self._write(
             f"MERGE (n:Entity {src_anchor})",
             descriptor="age.edge.endpoint",
@@ -588,7 +588,13 @@ class HologresAGEGraphStorage(BaseGraphStorage):
             )
         await self._write(
             f"MATCH (a:Entity {src_anchor}), (b:Entity {tgt_anchor}) "
-            "MERGE (a)-[r:DIRECTED]->(b) "
+            "MERGE (a)-[:DIRECTED]->(b)",
+            descriptor="age.edge.upsert",
+            replay_safe=True,
+        )
+        await self._write(
+            f"MATCH (a:Entity {src_anchor})-[r:DIRECTED]->"
+            f"(b:Entity {tgt_anchor}) "
             f"SET r = {_agtype_map(dict(edge_data))}",
             descriptor="age.edge.upsert",
             replay_safe=True,

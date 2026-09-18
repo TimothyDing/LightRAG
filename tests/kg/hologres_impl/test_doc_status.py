@@ -536,8 +536,9 @@ async def test_upsert_keeps_existing_content_hash_when_update_omits_it(
 
     (write,) = calls_for(client, "doc_status.upsert")
     assert (
-        "content_hash = COALESCE(NULLIF(EXCLUDED.content_hash, ''), "
-        "current.content_hash)" in write["sql"]
+        "content_hash = CASE WHEN EXCLUDED.content_hash IS NULL "
+        "OR EXCLUDED.content_hash = '' THEN current.content_hash "
+        "ELSE EXCLUDED.content_hash END" in write["sql"]
     )
     assert "content_hash = EXCLUDED.content_hash" not in write["sql"]
 
